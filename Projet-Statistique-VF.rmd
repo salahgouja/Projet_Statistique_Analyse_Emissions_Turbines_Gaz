@@ -1,0 +1,1575 @@
+---
+title: 'Projet Statistique : Analyse des Émissions des Turbines à Gaz et Maintenance Prédictive'
+author: 'Salah Gouja '
+output:
+  pdf_document: default
+  df_print: paged
+  html_notebook: default
+  html_document:
+  word_document: default
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Introduction
+
+Ce notebook analyse les données sur les émissions de gaz des turbines
+(CO) collectées entre 2011 et 2015.\
+L'objectif est d'explorer les relations entre les variables
+environnementales et les émissions, de réaliser des analyses
+statistiques approfondies et de construire des modèles prédictifs.
+
+La méthodologie s'inspire de l'article *"ANOVA, Regression, Correlation
+Analysis: A Portfolio of Work in Statistical Techniques with SPSS"*.\
+Contrairement à l'article, qui se concentre uniquement sur les données
+de 2015, ce notebook étend l'analyse à l'ensemble des données de 2011 à
+2015.
+
+En complément, ce notebook inclura également une analyse du dataset
+*AI4I 2020* sur la maintenance prédictive, permettant d’explorer les
+relations entre la qualité des produits, les défaillances des machines,
+et d’autres variables pertinentes.
+
+# les données sur les émissions de gaz des turbines
+
+## Chargement et Préparation des Données
+
+```{r}
+
+# Load necessary library
+library(dplyr)
+
+# File paths (update to your file system if needed)
+file_2011 <-  "D:/download/stat/projet/gas_turbine_co_and_nox_emission_data_set/gt_2011.csv"
+file_2012 <-  "D:/download/stat/projet/gas_turbine_co_and_nox_emission_data_set/gt_2012.csv"
+file_2013 <-  "D:/download/stat/projet/gas_turbine_co_and_nox_emission_data_set/gt_2013.csv"
+file_2014 <-  "D:/download/stat/projet/gas_turbine_co_and_nox_emission_data_set/gt_2014.csv"
+file_2015 <-  "D:/download/stat/projet/gas_turbine_co_and_nox_emission_data_set/gt_2015.csv"
+
+# Read the CSV files
+df_2011 <- read.csv(file_2011) %>% mutate(Year = 2011)
+df_2012 <- read.csv(file_2012) %>% mutate(Year = 2012)
+df_2013 <- read.csv(file_2013) %>% mutate(Year = 2013)
+df_2014 <- read.csv(file_2014) %>% mutate(Year = 2014)
+df_2015 <- read.csv(file_2015) %>% mutate(Year = 2015)
+
+# Concatenate all files row-wise
+data <- bind_rows(df_2011, df_2012, df_2013,df_2014,df_2015)
+
+
+# View combined data
+print(data)
+
+# write the dataset in data file (one execution)
+#write.csv(data, "data.csv", row.names = FALSE)
+
+# View the structure of the dataset
+str(data)
+# Check column names
+colnames(data)
+# Afficher un aperçu des données
+head(data)
+
+# Display the last few rows
+tail(data)
+
+# Get the dimensions (rows and columns)
+dim(data)
+
+# Summary statistics for the entire dataset
+summary(data)
+
+# Summary for specific columns
+summary(data$TAT)  # Replace 'AT' with a column name  
+
+# Check unique values in categorical columns
+unique(data$Year)
+
+```
+
+Les statistiques descriptives ci-dessus fournissent un aperçu des
+variables du dataset, montrant la gamme des valeurs (min, max), ainsi
+que des mesures de tendance centrale (moyenne, médiane) pour chaque
+variable. Cela permet de mieux comprendre la distribution des données
+avant d'entamer les analyses statistiques plus approfondies.
+
+```{r}
+# Check for missing values in each column
+colSums(is.na(data))
+ 
+```
+
+Les données ne contiennent aucune valeur manquante, comme le montre
+l'absence de valeurs "NA" dans toutes les colonnes.
+
+## Analyse des Relations entre les Variables Indépendantes et les Variables Dépendantes
+
+Dans cette section on va implémenter des graphiques pour visualiser la
+relation entre chaque variable indépendante et les variables dépendantes
+(CO et NOx). Nous utilisons ici des graphiques de dispersion pour
+observer comment chaque variable indépendante (par exemple, la
+température, la pression) est liée aux émissions de CO et NOx. À chaque
+fois, les paramètres de la fonction 'plot' sont ajustés pour représenter
+correctement ces relations.
+
+```{r}
+par(mfrow = c(2, 5))
+
+# Liste des variables indépendantes
+variables <- c("AT", "AP", "AH", "AFDP", "GTEP", "TIT", "TAT", "TEY","CDP")
+
+# Utilisation de lapply pour créer les graphiques
+invisible(lapply(variables, function(var) {
+  plot(data[[var]], data$CO, 
+       xlab = paste(var), 
+       ylab = "Carbone Monoxyde", 
+       main = paste("Relation entre CO et", var))
+}))
+
+invisible(lapply(variables, function(var) {
+  plot(data[[var]], data$NOX, 
+       xlab = paste(var), 
+       ylab = "Oxyde d'azote", 
+       main = paste("Relation entre NOX et", var))
+}))
+```
+
+D'après les graphiques de dispersion, aucune relation linéaire évidente
+n'émerge entre les variables indépendantes (comme la température, la
+pression, etc.) et les émissions de CO et NOx. Cette absence de relation
+linéaire suggère que les données peuvent suivre une tendance monotone
+mais non linéaire. Ainsi, nous allons appliquer le test de corrélation
+de Spearman (apres avoir tester la normlité ), qui est une méthode non
+paramétrique, pour évaluer la force et la direction des relations
+monotones entre ces variables.
+
+## Visualisation des Relations entre les Variables Indépendantes et les Variables Dépendantes
+
+Dans cette section, nous avons généré des histogrammes pour visualiser
+la distribution de chaque variable indépendante. Ensuite, des graphiques
+de dispersion ont été tracés pour explorer les relations entre chaque
+variable indépendante et les variables dépendantes (CO et NOX). Cela
+nous permet de mieux comprendre la répartition des données et d'observer
+d'éventuelles tendances linéaires ou non linéaires avant de procéder à
+des analyses statistiques plus approfondies. \### Section pour les
+Graphiques de Dispersion (Scatter Plots) :
+
+Graphiques de dispersion pour les relations entre les variables
+indépendantes et les variables dépendantes (CO et NOX)
+
+```{r}
+# 
+par(mfrow = c(3, 3))  # Organiser les scatter plots en 3 lignes et 3 colonnes
+
+# Relation entre AT et CO
+plot(data$AT, data$CO,
+     xlab = "AT",                 # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre AT et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre AP et CO
+plot(data$AP, data$CO,
+     xlab = "AP",                 # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre AP et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre AH et CO
+plot(data$AH, data$CO,
+     xlab = "AH",                 # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre AH et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre AFDP et CO
+plot(data$AFDP, data$CO,
+     xlab = "AFDP",               # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre AFDP et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre GTEP et CO
+plot(data$GTEP, data$CO,
+     xlab = "GTEP",               # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre GTEP et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre TIT et CO
+plot(data$TIT, data$CO,
+     xlab = "TIT",                # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre TIT et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre TAT et CO
+plot(data$TAT, data$CO,
+     xlab = "TAT",                # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre TAT et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre CDP et CO
+plot(data$CDP, data$CO,
+     xlab = "CDP",                # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre CDP et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre TEY et CO
+plot(data$TEY, data$CO,
+     xlab = "TEY",                # Légende de l'axe x
+     ylab = "CO",                 # Légende de l'axe y
+     main = "Relation entre TEY et CO", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+```
+
+#=========================== meme code pour NOX
+==============================================
+
+```{r}
+# 
+par(mfrow = c(3, 3))  # Organiser les scatter plots en 3 lignes et 3 colonnes
+
+# Relation entre AT et NOX
+plot(data$AT, data$NOX,
+     xlab = "AT",                 # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre AT et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre AP et NOX
+plot(data$AP, data$NOX,
+     xlab = "AP",                 # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre AP et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre AH et NOX
+plot(data$AH, data$NOX,
+     xlab = "AH",                 # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre AH et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre AFDP et NOX
+plot(data$AFDP, data$NOX,
+     xlab = "AFDP",               # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre AFDP et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre GTEP et NOX
+plot(data$GTEP, data$NOX,
+     xlab = "GTEP",               # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre GTEP et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre TIT et NOX
+plot(data$TIT, data$NOX,
+     xlab = "TIT",                # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre TIT et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre TAT et NOX
+plot(data$TAT, data$NOX,
+     xlab = "TAT",                # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre TAT et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre CDP et NOX
+plot(data$CDP, data$NOX,
+     xlab = "CDP",                # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre CDP et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+# Relation entre TEY et NOX
+plot(data$TEY, data$NOX,
+     xlab = "TEY",                # Légende de l'axe x
+     ylab = "NOX",                 # Légende de l'axe y
+     main = "Relation entre TEY et NOX", # Titre du graphique
+     col = "blue",                # Couleur des points
+     pch = 19)                    # Type de points (19 pour des points pleins)
+
+```
+
+### Histogrammes pour les variables indépendantes
+
+```{r}
+par(mfrow = c(3, 3))  # Organiser les histogrammes en 3 lignes et 3 colonnes
+```
+
+```{r}
+hist(data$AT, main = "Histogramme de AT", xlab = "AT", col = "blue")
+```
+
+```{r}
+hist(data$AP, main = "Histogramme de AP", xlab = "AP", col = "blue")
+```
+
+```{r}
+hist(data$AH, main = "Histogramme de AH", xlab = "AH", col = "blue")
+```
+
+```{r}
+hist(data$AFDP, main = "Histogramme de AFDP", xlab = "AFDP", col = "blue")
+```
+
+```{r}
+hist(data$GTEP, main = "Histogramme de GTEP", xlab = "GTEP", col = "blue")
+```
+
+```{r}
+hist(data$TIT, main = "Histogramme de TIT", xlab = "TIT", col = "blue")
+```
+
+```{r}
+hist(data$TAT, main = "Histogramme de TAT", xlab = "TAT", col = "blue")
+```
+
+```{r}
+hist(data$TEY, main = "Histogramme de TEY", xlab = "TEY", col = "blue")
+```
+
+```{r}
+hist(data$CDP, main = "Histogramme de CDP", xlab = "CDP", col = "blue")
+```
+
+### Analyse des Corrélations entre les Variables avec le Test de Spearman
+
+-   Hypothèses pour le test de corrélation de Spearman :
+
+1.  Hypothèse nulle (H₀) : Il n'y a pas de corrélation significative
+    entre les deux variables testées.
+2.  Hypothèse alternative (H₁) : Il existe une corrélation significative
+    entre les deux variables testées.
+
+```{r}
+
+variables <- c("AT", "AP", "AH", "AFDP", "GTEP", "TIT", "TAT", "TEY", "CDP", "CO", "NOX")
+# Initialisation d'une liste vide pour stocker les résultats
+results <- data.frame(Variable1 = character(), Variable2 = character(), 
+                      Spearman_rho = numeric(), P_value = numeric(), 
+                      Significance = character(), stringsAsFactors = FALSE)
+# Créer une matrice vide pour stocker les coefficients de Spearman
+cor_matrix <- matrix(1, nrow = length(variables), ncol = length(variables), 
+                     dimnames = list(variables, variables))
+
+
+# Calcul des corrélations de Spearman et stockage des résultats
+for (i in 1:(length(variables)-1)) {
+  for (j in (i+1):length(variables)) {
+    var1 <- variables[i]
+    var2 <- variables[j]
+    test_result <- cor.test(data[[var1]], data[[var2]], method = "spearman")
+    
+    # Déterminer la signification basée sur la p-value
+    significance <- ifelse(test_result$p.value < 0.05, "Significant", "Not Significant")
+    
+    # Ajout des résultats dans le tableau
+    results <- rbind(results, data.frame(Variable1 = var1, Variable2 = var2, 
+                                         Spearman_rho = test_result$estimate, 
+                                         P_value = test_result$p.value, 
+                                         Significance = significance))
+  }
+}
+ 
+print(results)
+
+```
+
+On peut observer une forte corrélation entre les variables suivantes :
+**GTEP** et **TIT** (0.93), **AFDP** et **GTEP** (0.97), **TIT** et
+**TEY** (0.92) , **TIT** et **CDP** (0.96)ainsi que **TEY** et **CDP**
+(0.95) .
+
+#================================================= Matrice de
+corrélation =======================================
+
+```{r}
+#install.packages("reshape2")  # Installe le package (si non déjà installé)
+library(reshape2)             # Charge le package
+#install.packages("ggplot2")  # Installe ggplot2 (si ce n'est pas déjà fait)
+library(ggplot2)             # Charge ggplot2
+
+
+# Créer une matrice vide pour stocker les coefficients de Spearman
+cor_matrix <- matrix(1, nrow = length(variables), ncol = length(variables), 
+                     dimnames = list(variables, variables))
+
+# Remplir la matrice avec les coefficients de Spearman
+for (row in 1:nrow(results)) {
+  var1 <- results$Variable1[row]
+  var2 <- results$Variable2[row]
+  cor_matrix[var1, var2] <- results$Spearman_rho[row]
+  cor_matrix[var2, var1] <- results$Spearman_rho[row]  # Matrice symétrique
+}
+
+# Supprimer les valeurs du triangle inférieur
+cor_matrix_upper <- cor_matrix
+cor_matrix_upper[lower.tri(cor_matrix_upper)] <- NA
+
+# Convertir la matrice en format long pour ggplot2
+cor_long_upper <- melt(cor_matrix_upper, na.rm = TRUE)
+
+# Heatmap pour le triangle supérieur
+ggplot(cor_long_upper, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, 
+                       limit = c(-1, 1), space = "Lab", name = "Spearman\nCorrelation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(x = "Variables", y = "Variables", title = "Triangle supérieur des corrélations")
+
+```
+
+## Modèle de Régression Multiple pour la Prédiction des Émissions de CO
+
+```{r}
+# Modèle de régression multiple
+model1 <- lm(CO ~ AT + AP + AH + AFDP + TEY + TIT + GTEP + CDP + TAT, data = data)
+
+# Résumé du modèle
+summary(model1)
+
+```
+
+En appliquant le modèle de régression multiple avec toutes les variables
+indépendantes, nous avons observé les résultats suivants :
+
+-   **Significativité des variables** : Toutes les variables
+    indépendantes montrent un niveau de significativité élevé, avec
+    trois étoiles (\***), à l'exception de la variable** AP\*\*, qui
+    montre une seule étoile (\*) de significativité.
+-   **Adjusted R-squared** : L'indicateur de **Adjusted R-squared** du
+    modèle est de 0.5633, ce qui signifie que 56.33 % de la variance des
+    émissions de **CO** peut être expliquée par les variables
+    indépendantes sélectionnées.
+
+Cela montre que le modèle présente une capacité modérée à expliquer les
+émissions de CO, bien que d'autres facteurs non inclus dans ce modèle
+puissent également influencer ces émissions.
+
+```{r}
+# Modèle de régression multiple
+model1N <- lm(NOX ~ AT + AP + AH + AFDP + TEY + TIT + GTEP + CDP + TAT, data = data)
+
+# Résumé du modèle
+summary(model1N)
+
+```
+
+En appliquant le modèle de régression multiple avec toutes les variables
+indépendantes, nous avons observé les résultats suivants :
+
+-   **Significativité des variables** : Toutes les variables
+    indépendantes montrent un niveau de significativité élevé, avec
+    trois étoiles (\***), à l'exception de la variable** GTEP\*\*, qui
+    montre une seule étoile (\*) de significativité.
+-   **Adjusted R-squared** : L'indicateur de **Adjusted R-squared** du
+    modèle est de 0.5178, ce qui signifie que 51.78 % de la variance des
+    émissions de **NOX** peut être expliquée par les variables
+    indépendantes sélectionnées.
+
+Cela montre que le modèle présente une capacité modérée à expliquer les
+émissions de NOX, bien que d'autres facteurs non inclus dans ce modèle
+puissent également influencer ces émissions.
+
+Il serait utile d'examiner davantage les résidus pour vérifier les
+hypothèses du modèle, comme la normalité et l'homoscédasticité.
+
+## ======================================================================================================================
+
+## ======================================================================================================================
+
+## ====================================== Analyse pour le CO ============================================================
+
+## ======================================================================================================================
+
+## ======================================================================================================================
+
+## Modèle de Régression Multiple (Exclusion de "AP")
+
+```{r}
+# Modèle de régression multiple
+model2 <- lm(CO ~ AT + AH + AFDP + TEY + TIT + GTEP + CDP + TAT , data = data)
+# Résumé du modèle
+summary(model2)
+```
+
+Dans le **modèle 2**, après avoir exclu la variable *AP*, nous avons
+observé les résultats suivants :
+
+-   **Adjusted R-squared** : De **0.5633**, ce qui indique que le modèle
+    explique **56.33%** de la variance des émissions de **CO**, une
+    valeur identique à celle du modèle précédent, confirmant que
+    l'exclusion de **AP** n'a pas affecté significativement la
+    performance du modèle.
+
+-   **F-statistic** : De **5923**, ce qui montre que le modèle explique
+    bien la variance de **CO** et que l'ajustement est significatif.
+    Comparée à celle du modèle 1, la **F-statistic** légèrement plus
+    élevée suggère que le **modèle 2** est légèrement plus performant.
+
+En conclusion, l'exclusion de **AP** n'a pas d'impact majeur sur la
+qualité du modèle, qui reste pertinent pour expliquer les émissions de
+CO.
+
+## Analyse de la Variance (ANOVA) pour les Modèles 1 et 2
+
+L'ANOVA est utilisée ici pour tester la significativité globale des
+variables indépendantes dans les modèles de régression. Elle permet de
+confirmer si l'exclusion de certaines variables, comme AP, affecte de
+manière significative la capacité du modèle à expliquer la variance des
+émissions de CO.
+
+-   Test ANOVA sur le 1er modèle
+
+```{r}
+# Test ANOVA sur le 1er modèle
+anova_results1 <- anova(model1)
+anova_results1
+```
+
+-   Test ANOVA sur le 2ème modèle
+
+```{r}
+# Test ANOVA sur le 2ème modèle
+anova_results2 <- anova(model2)
+anova_results2
+```
+
+Les résultats de l'ANOVA confirment les conclusions des modèles de
+régression. L'exclusion de AP n'a pas un impact majeur sur la capacité
+du modèle à expliquer la variance des émissions de CO, et ce dernier
+reste significatif même après l'exclusion de cette variable. Les modèles
+sont robustes, et les variables sélectionnées expliquent toujours une
+part importante de la variance.
+
+#### Vérification de la Normalité des Résidus du Modèle 2
+
+```{r}
+# Diviser l'affichage en 2 colonnes pour afficher les deux graphiques
+par(mfrow = c(1, 2))  
+
+# Extraire les résidus du modèle
+residuals_model <- residuals(model2)
+
+# 1. Q-Q plot pour vérifier la normalité des résidus
+qqnorm(residuals_model, main = "Q-Q Plot des résidus")
+qqline(residuals_model, col = "red", lwd = 2)  # Ajouter une ligne de référence
+
+```
+
+Interprétation du Q-Q plot : Les points noirs représentent les quantiles
+des résidus observés (empiriques), tandis que la ligne rouge représente
+les quantiles théoriques d'une distribution normale. Si les résidus
+étaient normalement distribués, les points devraient se situer près de
+cette ligne rouge.
+
+#### Histogramme des résidus
+
+```{r}
+
+hist(residuals_model, breaks = 30, main = "Histogramme des résidus avec courbe normale",
+     xlab = "Valeurs des résidus", col = "lightblue", freq = FALSE)
+
+# Ajouter la courbe de densité empirique des résidus
+lines(density(residuals_model), col = "blue", lwd = 2)
+
+# Ajouter la courbe théorique de la loi normale
+curve(dnorm(x, mean = mean(residuals_model), sd = sd(residuals_model)), 
+      col = "green", lwd = 2, add = TRUE)
+
+
+```
+
+Interprétation de l'histogramme : La courbe bleue représente la densité
+empirique des résidus, tandis que la courbe verte représente,la densité
+théorique d'une distribution normale. Si les résidus suivent une
+distribution normale,les deux courbes devraient être proches.
+
+## Interprétation des Coefficients du Modèle de Régression
+
+```{r}
+# Affichage des coefficients du modèle
+t_tes_results <- summary(model2)$coefficients
+print(t_tes_results)
+
+```
+
+-   Interprétation des résultats :
+
+-   Intercept (ordonnée à l'origine) :Estimate : 126.024020661 : Lorsque
+    toutes les variables indépendantes sont égales à 0, la valeur
+    prédite pour Y (les émissions de CO) est 126.02. Cela signifie que,
+    en l'absence d'influences des autres variables, les émissions de CO
+    seraient de 126.02 unités.
+
+-   Exemple de variable avec un coefficient négatif : *AT (Ambient
+    Temperature)* : Estimate = -0.0466 Cela signifie qu'une augmentation
+    de 1 unité de la température ambiante (AT) entraîne une diminution
+    de 0.0466 unités des émissions de CO, toutes les autres variables
+    restant constantes.
+
+-   Exemple de variable avec un coefficient positif : *GTEP (Gas Turbine
+    Energy Produced)* : Estimate = 0.1007 Une augmentation de 1 unité de
+    l'énergie produite par la turbine à gaz (GTEP) entraîne une
+    augmentation de 0.1007 unités des émissions de CO, toutes les autres
+    variables étant constantes.
+
+## ======================================================================================================================
+
+## ======================================================================================================================
+
+## ===================================================== Analyse pour le NOX ============================================
+
+## ======================================================================================================================
+
+## Modèle de Régression Multiple (Exclusion de "GTEP")
+
+```{r}
+# Modèle de régression multiple
+model2N <- lm(NOX ~ AT + AH + AFDP + TEY + TIT + AP + CDP + TAT , data = data)
+# Résumé du modèle
+summary(model2N)
+```
+
+Dans le **modèle 2N**, après avoir exclu la variable *GTEP*, nous avons
+observé les résultats suivants :
+
+-   **Adjusted R-squared** : De **0.5178**, ce qui indique que le modèle
+    explique **51.78%** de la variance des émissions de **NOX**, une
+    valeur identique à celle du modèle précédent, confirmant que
+    l'exclusion de **GTEP** n'a pas affecté significativement la
+    performance du modèle.
+
+-   **F-statistic** : De **4929**, ce qui montre que le modèle explique
+    bien la variance de **NOX** et que l'ajustement est significatif.
+    Comparée à celle du **modèle 1N**, la **F-statistic** légèrement
+    plus élevée suggère que le **modèle 2N** est légèrement plus
+    performant.
+
+En conclusion, l'exclusion de **GTEP** n'a pas d'impact majeur sur la
+qualité du modèle, qui reste pertinent pour expliquer les émissions de
+NOX.
+
+## Analyse de la Variance (ANOVA) pour les Modèles 1N et 2N
+
+L'ANOVA est utilisée ici pour tester la significativité globale des
+variables indépendantes dans les modèles de régression. Elle permet de
+confirmer si l'exclusion de certaines variables, comme AP, affecte de
+manière significative la capacité du modèle à expliquer la variance des
+émissions de CO.
+
+-   Test ANOVA sur le 1er modèle
+
+```{r}
+# Test ANOVA sur le 1er modèle
+anova_results1N <- anova(model1N)
+anova_results1N
+```
+
+-   Test ANOVA sur le 2ème modèle
+
+```{r}
+# Test ANOVA sur le 2ème modèle
+anova_results2N <- anova(model2N)
+anova_results2N
+```
+
+Les résultats de l'ANOVA confirment les conclusions des modèles de
+régression. L'exclusion de GTEP n'a pas un impact majeur sur la capacité
+du modèle à expliquer la variance des émissions de NOX, et ce dernier
+reste significatif même après l'exclusion de cette variable. Les modèles
+sont robustes, et les variables sélectionnées expliquent toujours une
+part importante de la variance.
+
+#### Vérification de la Normalité des Résidus du Modèle 2N
+
+```{r}
+# Diviser l'affichage en 2 colonnes pour afficher les deux graphiques
+par(mfrow = c(1, 2))  
+
+# Extraire les résidus du modèle
+residuals_modelN <- residuals(model2N)
+
+# 1. Q-Q plot pour vérifier la normalité des résidus
+qqnorm(residuals_modelN, main = "Q-Q Plot des résidus")
+qqline(residuals_modelN, col = "red", lwd = 2)  # Ajouter une ligne de référence
+
+```
+
+Interprétation du Q-Q plot : Les points noirs représentent les quantiles
+des résidus observés (empiriques), tandis que la ligne rouge représente
+les quantiles théoriques d'une distribution normale. Si les résidus
+étaient normalement distribués, les points devraient se situer près de
+cette ligne rouge.
+
+#### Histogramme des résidus
+
+```{r}
+
+hist(residuals_modelN, breaks = 30, main = "Histogramme des résidus avec courbe normale",
+     xlab = "Valeurs des résidus", col = "lightblue", freq = FALSE)
+
+# Ajouter la courbe de densité empirique des résidus
+lines(density(residuals_modelN), col = "blue", lwd = 2)
+
+# Ajouter la courbe théorique de la loi normale
+curve(dnorm(x, mean = mean(residuals_modelN), sd = sd(residuals_modelN)), 
+      col = "green", lwd = 2, add = TRUE)
+
+
+```
+
+Interprétation de l'histogramme : La courbe bleue représente la densité
+empirique des résidus, tandis que la courbe verte représente,la densité
+théorique d'une distribution normale. Si les résidus suivent une
+distribution normale,les deux courbes devraient être proches.
+
+## Interprétation des Coefficients du Modèle de Régression
+
+```{r}
+# Affichage des coefficients du modèle
+t_tes_resultsN <- summary(model2N)$coefficients
+print(t_tes_resultsN)
+
+```
+
+-   Interprétation des résultats :
+
+-   Intercept (ordonnée à l'origine) :Estimate : -61.9075295 : Lorsque
+    toutes les variables indépendantes sont égales à 0, la valeur
+    prédite pour Y (les émissions de NOX) est -61.90. Cela signifie que,
+    en l'absence d'influences des autres variables, les émissions de NOX
+    seraient de -61.90 unités.
+
+-   Exemple de variable avec un coefficient négatif : *AT (Ambient
+    Temperature)* : Estimate = -1.7695535 Cela signifie qu'une
+    augmentation de 1 unité de la température ambiante (AT) entraîne une
+    diminution de 1.76 unités des émissions de NOX, toutes les autres
+    variables restant constantes.
+
+-   La variable avec un coefficient positif : *AFDP* : Estimate =
+    0.7034258 Une augmentation de 1 unité de la diférence de pression
+    d'aire filtre(AFDP) entraîne une augmentation de 0.70 unités des
+    émissions de NOX, toutes les autres variables étant constantes.
+
+## ======================================================================================================================
+
+## ======================================================================================================================
+
+## Deuxieme Execution
+
+## ======================================================================================================================
+
+## ======================================================================================================================
+
+### Deuxieme Execution pour le CO
+
+# 2ème Exécution du Modèle de Régression
+
+Nous allons réexécuter le modèle de régression en tenant compte du fait
+que certains résultats initialement moins significatifs pourraient être
+dus à la présence de valeurs aberrantes. Par conséquent, nous allons
+procéder au traitement de ces valeurs aberrantes, car elles pourraient
+perturber les résultats et affecter la performance du modèle.
+
+## Détection des Valeurs Aberrantes
+
+```{r}
+# Fonction pour calculer le pourcentage d'outliers
+detecter_outliers <- function(x) {
+  if (!is.numeric(x)) {
+    return(NA)  # Ignorer les colonnes non numériques
+  }
+  Q1 <- quantile(x, 0.25)  # Premier quartile
+  Q3 <- quantile(x, 0.75)  # Troisième quartile
+  IQR <- Q3 - Q1  # Intervalle interquartile
+  borne_inferieure <- Q1 - 1.5 * IQR
+  borne_superieure <- Q3 + 1.5 * IQR
+  outliers <- sum(x < borne_inferieure | x > borne_superieure)
+  total_valeurs <- length(x)
+  return(outliers / total_valeurs * 100)  # Pourcentage d'outliers
+}
+
+# Appliquer la fonction à chaque colonne de la dataframe
+pourcentage_outliers <- sapply(data, detecter_outliers)
+
+# Résultat
+print(pourcentage_outliers)
+```
+
+Les résultats montrent la présence notable de valeurs aberrantes dans
+plusieurs variables, notamment TAT (13.49%) et CO (7.23%) et NOX(2.54%),
+indiquant des anomalies importantes susceptibles de perturber les
+analyses et d'affecter la robustesse des modèles.
+
+#### Détecter les outliers dans la variable TAT :
+
+```{r}
+#détecter les outliers dans la variable TAT :
+
+# Extraire la variable TAT
+TAT <- data$TAT
+
+# Calcul des quartiles
+Q1 <- quantile(TAT, 0.25)
+Q3 <- quantile(TAT, 0.75)
+IQR <- Q3 - Q1
+
+# Calcul des bornes
+borne_inferieure <- Q1 - 1.5 * IQR
+borne_superieure <- Q3 + 1.5 * IQR
+
+# Identifier les outliers
+outliers_TAT <- TAT[TAT < borne_inferieure | TAT > borne_superieure]
+
+# Afficher les outliers
+#print(outliers_TAT)
+```
+
+```{r}
+
+# Créer une copie de data sous le nom data2
+data2 <- data
+
+# Extraire la variable TAT de data1
+TAT <- data2$TAT
+
+# Calcul des quartiles et de l'IQR pour identifier les outliers
+Q1 <- quantile(TAT, 0.25)
+Q3 <- quantile(TAT, 0.75)
+IQR <- Q3 - Q1
+
+# Calcul des bornes
+borne_inferieure <- Q1 - 1.5 * IQR
+borne_superieure <- Q3 + 1.5 * IQR
+
+# Identifier les indices des outliers
+outliers_indices <- which(TAT < borne_inferieure | TAT > borne_superieure)
+
+# Calcul de la moyenne de TAT
+moyenne_TAT <- mean(TAT, na.rm = TRUE)
+
+# Imputer les valeurs aberrantes (outliers) avec la moyenne
+TAT[outliers_indices] <- moyenne_TAT
+
+# Remplacer la colonne TAT dans data1
+data2$TAT <- TAT
+
+# Afficher les 5 premières lignes de data1 après imputation
+head(data2)
+
+# Appliquer la fonction à chaque colonne de la dataframe
+pourcentage_outliers <- sapply(data2, detecter_outliers)
+
+# Résultat
+print(pourcentage_outliers)
+```
+
+Après avoir effectué l'imputation par la moyenne pour la variable TAT,
+le pourcentage d'outliers a diminué. Cependant, il reste encore quelques
+valeurs aberrantes présentes dans cette variable.
+
+#### Détecter les outliers dans la variable CO :
+
+```{r}
+##Exploration des valeur aberrantes pour le CO
+# Extraire la variable TAT
+CO <- data$CO
+
+# Calcul des quartiles
+Q1 <- quantile(CO, 0.25)
+Q3 <- quantile(CO, 0.75)
+IQR <- Q3 - Q1
+
+# Calcul des bornes
+borne_inferieure <- Q1 - 1.5 * IQR
+borne_superieure <- Q3 + 1.5 * IQR
+
+# Identifier les outliers
+outliers_CO <- CO[CO < borne_inferieure | CO > borne_superieure]
+
+# Afficher les outliers
+print(outliers_CO)
+
+summary(data$CO)
+
+
+```
+
+#### Détecter les outliers dans la variable NOX:
+
+```{r}
+##Exploration des valeur aberrantes pour le NOX
+# Extraire la variable NOX
+NOX <- data$NOX
+
+# Calcul des quartiles
+Q1 <- quantile(NOX, 0.25)
+Q3 <- quantile(NOX, 0.75)
+IQR <- Q3 - Q1
+
+# Calcul des bornes
+borne_inferieure <- Q1 - 1.5 * IQR
+borne_superieure <- Q3 + 1.5 * IQR
+
+# Identifier les outliers
+outliers_NOX <- NOX[NOX < borne_inferieure | NOX > borne_superieure]
+
+# Afficher les outliers
+print(outliers_NOX)
+
+summary(data$NOX)
+
+
+```
+
+Après avoir tenté l'imputation par la moyenne et la médiane, nous avons
+constaté que les deux méthodes laissaient des valeurs aberrantes. Nous
+avons donc décidé d'utiliser l'imputation par KNN.
+
+#### \# Imputattion par le KNN
+
+```{r}
+
+# Créer une copie de data sous le nom data1
+data1 <- data
+# Imputattion par le KNN
+
+# Fonction pour détecter les valeurs aberrantes en utilisant l'IQR et les transformer en NA
+replace_outliers_with_na <- function(column) {
+  Q1 <- quantile(column, 0.25, na.rm = TRUE)
+  Q3 <- quantile(column, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  
+  # Remplacer les valeurs aberrantes par NA
+  column[column < lower_bound | column > upper_bound] <- NA
+  return(column)
+}
+
+# Identifier les colonnes numériques
+numeric_columns <- sapply(data1, is.numeric)
+
+# Appliquer la fonction à toutes les colonnes numériques
+data_no_outliers <- data1  # Créer une copie du jeu de données
+
+for (col_name in names(data1)[numeric_columns]) {
+  data_no_outliers[[col_name]] <- replace_outliers_with_na(data1[[col_name]])
+}
+
+# Afficher le jeu de données après remplacement des valeurs aberrantes
+print(data_no_outliers)
+
+# Compter les valeurs manquantes par colonne
+colSums(is.na(data_no_outliers))
+```
+
+```{r}
+# Charger le package
+library(VIM)
+
+
+# Imputation par KNN
+data_imputed_knn <- kNN(data_no_outliers, k = 5)  
+data_imputed_knn <- data_imputed_knn[, !grepl("_imp$", colnames(data_imputed_knn))]
+
+# Afficher les données après imputation
+ 
+
+
+ 
+# Fonction pour calculer le pourcentage d'outliers
+detecter_outliers <- function(x) {
+  if (!is.numeric(x)) {
+    return(NA)  # Ignorer les colonnes non numériques
+  }
+  Q1 <- quantile(x, 0.25)  # Premier quartile
+  Q3 <- quantile(x, 0.75)  # Troisième quartile
+  IQR <- Q3 - Q1  # Intervalle interquartile
+  borne_inferieure <- Q1 - 1.5 * IQR
+  borne_superieure <- Q3 + 1.5 * IQR
+  outliers <- sum(x < borne_inferieure | x > borne_superieure)
+  total_valeurs <- length(x)
+  return(outliers / total_valeurs * 100)  # Pourcentage d'outliers
+}
+
+ 
+# Appliquer la fonction à chaque colonne de la dataframe
+pourcentage_outliers <- sapply(data_imputed_knn, detecter_outliers)
+
+# Résultat
+print(pourcentage_outliers)
+```
+
+#===================================================== Regression pour
+CO ================================================== \### Modèle de
+régression multiple
+
+Notre data traité maintenant est "data_imputed_knn"
+
+```{r}
+# Modèle de régression multiple avec toutes les variables après traitement des outliers
+model3 <- lm(CO ~ AT + AP  + AH + AFDP + TEY + TIT + GTEP + CDP + TAT , data = data_imputed_knn)
+# Résumé du modèle
+summary(model3)
+
+```
+
+Résultat : Adjusted R-squared: 0.5723, indiquant que le modèle explique
+57.23% de la variance des émissions de CO. Les variables non
+significatives, comme AP (p \> 0.05) et TAT, seront éliminées pour
+améliorer le modèle.
+
+#### Amélioration du modèle
+
+```{r}
+# Modèle 4 : Suppression des variables AP et TAT
+model4 <- lm(CO ~ AT  + AH  + TEY + TIT + GTEP + AFDP + CDP, data = data_imputed_knn)
+# Résumé du modèle
+summary(model4)
+
+```
+
+-   Résultat : Adjusted R-squared reste à 0.5723. Cela confirme que
+    l'exclusion de AP et TAT n'a pas affecté la capacité explicative du
+    modèle.
+
+##### Affinage du modèle
+
+```{r}
+# Modèle 5 : Suppression supplémentaire de AFDP en raison de son manque de significativité
+model5 <- lm(CO ~ AT  + AH  + TEY + TIT + GTEP + CDP, data = data_imputed_knn)
+summary(model5)
+
+
+```
+
+-   Résultat : Adjusted R-squared est légèrement réduit à 0.5722. Les
+    variables restantes expliquent 57.22% de la variance des émissions
+    de CO. Après avoir supprimé la variable AFDP en raison de son manque
+    de significativité, le modèle 5 explique 57.22% de la variance des
+    émissions de CO (Adjusted R-squared = 0.5722), légèrement supérieur
+    à la variance expliquée avant traitement des outliers (56.33%).\
+    Cette amélioration reflète l'impact positif du traitement des
+    valeurs aberrantes sur la qualité du modèle.
+
+#===================================================== Regression pour
+NOX ================================================== \### Modèle de
+régression multiple
+
+```{r}
+# Modèle de régression multiple avec toutes les variables après traitement des outliers
+model3N <- lm(NOX ~ AT + AP  + AH + AFDP + TEY + TIT + GTEP + CDP + TAT , data = data_imputed_knn)
+# Résumé du modèle
+summary(model3N)
+
+```
+
+Résultat : Adjusted R-squared: 0.5777, indiquant que le modèle explique
+57.77% de la variance des émissions de NOX. Les variables non
+significatives, comme GTEP (p \> 0.05) , sera éliminée pour améliorer le
+modèle.
+
+#### Amélioration du modèle
+
+```{r}
+# Modèle 4 : Suppression des variables AP et TAT
+model4N <- lm(NOX ~ AT  + AH  + TEY + TIT + AP + TAT + AFDP + CDP, data = data_imputed_knn)
+# Résumé du modèle
+summary(model4N)
+
+```
+
+-   Résultat : Adjusted R-squared reste à 0.5777. Cela confirme que
+    l'exclusion de GTEP n'a pas affecté la capacité explicative du
+    modèle.
+
+#============================================================ Test ANOVA
+=======================================================
+
+### ======================= Test ANOVA CO
+
+Application du test ANOVA sur les modèles pour évaluer la
+significativité des variables pour le CO
+
+```{r}
+anova_results3 <- anova(model3)
+anova_results3
+
+```
+
+```{r}
+
+anova_results4 <- anova(model4)
+anova_results4
+```
+
+Résultat :\
+- **AFDP** n'est plus significative (p = 0.191), ce qui indique que son
+effet est négligeable lorsqu'elle est combinée avec les autres variables
+dans ce modèle.\
+- Les variables **AT**, **AH**, **TEY**, **TIT**, et **GTEP** restent
+très significatives (p \< 0.001), tout comme dans le modèle précédent
+(**model3**).\
+- **CDP** reste significative (p = 0.0099), bien que son impact soit
+relativement faible.\
+- La contribution de **TEY** (F = 40,492) et **TIT** (F = 6,220) demeure
+majeure, soulignant qu'elles expliquent une grande partie de la variance
+des émissions de **CO**.
+
+### ======================= Test ANOVA NOX
+
+Application du test ANOVA sur les modèles pour évaluer la
+significativité des variables pour le CO
+
+```{r}
+anova_results3N <- anova(model3N)
+anova_results3N
+
+```
+
+```{r}
+
+anova_results4N <- anova(model4N)
+anova_results4N
+```
+
+Résultat :\
+- Les variables restent très significatives (p \< 0.001), tout comme
+dans le modèle précédent (**model3N**).\
+- **CDP** reste significative (p = 0.0099), bien que son impact soit
+relativement faible.\
+- La contribution de **AT** (F = 28074.11) et **TAT** (F = 11606.80)
+demeure majeure, soulignant qu'elles expliquent une grande partie de la
+variance des émissions de **NOX**.
+
+#========================================== Test Normalité pour CO
+==========================================
+
+#### Vérification de la Normalité des Résidus du Modèle 5 pour CO
+
+```{r}
+# Diviser l'affichage en 2 colonnes pour afficher les deux graphiques
+par(mfrow = c(1, 2))  
+
+# Extraire les résidus du modèle
+residuals_model <- residuals(model5)
+valeurs_predites <- fitted(model5)
+
+# 1. Q-Q plot pour vérifier la normalité des résidus
+qqnorm(residuals_model, main = "Q-Q Plot des résidus")
+qqline(residuals_model, col = "red", lwd = 2)  # Ajouter une ligne de référence
+
+```
+
+#### Histogramme des résidus
+
+```{r}
+
+hist(residuals_model, breaks = 30, main = "Histogramme des résidus avec courbe normale",
+     xlab = "Valeurs des résidus", col = "lightblue", freq = FALSE)
+
+# Ajouter la courbe de densité empirique des résidus
+lines(density(residuals_model), col = "blue", lwd = 2)
+
+# Ajouter la courbe théorique de la loi normale
+curve(dnorm(x, mean = mean(residuals_model), sd = sd(residuals_model)), 
+      col = "green", lwd = 2, add = TRUE)
+
+
+```
+
+#### Test d'Hétéroscédasticité
+
+Vérification de l'hétéroscédasticité par l'examen des résidus
+
+```{r}
+# 
+plot(residuals_model, valeurs_predites,
+     main = "Heteroscedasticity Test (Residuals on X-axis)",
+     xlab = "Résidus", 
+     ylab = "Valeurs prédites",
+     pch = 20, 
+     col = "blue")
+
+# Ajouter une ligne verticale à 0 pour référence
+abline(v = 0, col = "red", lwd = 2)
+
+# Ajouter une courbe de tendance pour observer les patterns éventuels
+lines(lowess(residuals_model, valeurs_predites), col = "green", lwd = 2)
+# Résultat : Une courbe de tendance est ajoutée pour détecter des motifs éventuels dans les résidus. 
+# Une absence d'hétéroscédasticité renforcerait la robustesse des résultats.
+```
+
+la courbe de tendance verte montre une répartition aléatoire des points
+autour de zéro sans motif clair, cela indique une absence
+d'hétéroscédasticité. Dans ce cas, les résidus sont homogènes, ce qui
+renforce la validité des résultats du modèle.
+
+#==================================================
+
+#### Vérification de la Normalité des Résidus du Modèle 4N pour NOX
+
+```{r}
+# Diviser l'affichage en 2 colonnes pour afficher les deux graphiques
+par(mfrow = c(1, 2))  
+
+# Extraire les résidus du modèle
+residuals_modelN <- residuals(model4N)
+valeurs_preditesN <- fitted(model4N)
+
+# 1. Q-Q plot pour vérifier la normalité des résidus
+qqnorm(residuals_modelN, main = "Q-Q Plot des résidus")
+qqline(residuals_modelN, col = "red", lwd = 2)  # Ajouter une ligne de référence
+
+```
+
+#### Histogramme des résidus
+
+```{r}
+
+hist(residuals_modelN, breaks = 30, main = "Histogramme des résidus avec courbe normale",
+     xlab = "Valeurs des résidus", col = "lightblue", freq = FALSE)
+
+# Ajouter la courbe de densité empirique des résidus
+lines(density(residuals_modelN), col = "blue", lwd = 2)
+
+# Ajouter la courbe théorique de la loi normale
+curve(dnorm(x, mean = mean(residuals_modelN), sd = sd(residuals_modelN)), 
+      col = "green", lwd = 2, add = TRUE)
+
+
+```
+
+#### Test d'Hétéroscédasticité
+
+Vérification de l'hétéroscédasticité par l'examen des résidus
+
+```{r}
+# 
+plot(residuals_modelN, valeurs_preditesN,
+     main = "Heteroscedasticity Test (Residuals on X-axis)",
+     xlab = "Résidus", 
+     ylab = "Valeurs prédites",
+     pch = 20, 
+     col = "blue")
+
+# Ajouter une ligne verticale à 0 pour référence
+abline(v = 0, col = "red", lwd = 2)
+
+# Ajouter une courbe de tendance pour observer les patterns éventuels
+lines(lowess(residuals_modelN, valeurs_predites), col = "green", lwd = 2)
+# Résultat : Une courbe de tendance est ajoutée pour détecter des motifs éventuels dans les résidus. 
+# Une absence d'hétéroscédasticité renforcerait la robustesse des résultats.
+```
+
+la courbe de tendance verte montre une répartition aléatoire des points
+autour de zéro sans motif clair, cela indique une absence
+d'hétéroscédasticité. Dans ce cas, les résidus sont homogènes, ce qui
+renforce la validité des résultats du modèle.
+
+#========================================================================================================================================================
+\# ANALYSE DATASET 2020\
+#========================================================================================================================================================
+\# Analyse du Dataset AI4I 2020 : Maintenance Prédictive
+
+Dans cette section, nous analysons le dataset AI4I 2020 sur la
+maintenance prédictive. L'objectif principal est d'explorer les
+relations entre les défaillances des machines (Machine_failure), la
+qualité des produits (Type : High, Medium, Low), et d'autres variables
+pertinentes telles que la vitesse de rotation (Rotational_speed).
+
+#### Chargement des Données et Exploration Initiale
+
+```{r}
+# Chargement du dataset
+df_2020 <- read.csv("ai4i2020.csv")
+
+# Aperçu des premières lignes
+head(df_2020)
+
+# Vérification des valeurs manquantes
+print(paste("Valeurs Manquantes :", sum(is.na(df_2020$Machine.failure))))  # Résultat attendu : 0 (pas de valeurs manquantes)
+
+# Vérification des niveaux de Machine_failure
+print(paste("Niveaux de Machine_failure :", toString(unique(df_2020$Machine.failure))))
+
+```
+
+```{r}
+# Obtenir les dimensions du dataset
+dataset_shape <- dim(df_2020)
+
+# Afficher le résultat
+cat("Le dataset contient", dataset_shape[1], "lignes et", dataset_shape[2], "colonnes.\n")
+```
+
+#### Test du Chi-Carré : Relation entre Type et Machine_failure
+
+-   H0 (hypothèse nulle) : Les variables Type et Machine_failure sont
+    indépendantes, c'est-à-dire que la qualité du produit (Type) n'a pas
+    d'effet sur la probabilité de défaillance de la machine
+    (Machine_failure).
+-   H1 (hypothèse alternative) : Les variables Type et Machine_failure
+    sont dépendantes, c'est-à-dire que la qualité du produit est
+    associée à la probabilité de défaillance de la machine.
+
+```{r}
+# Créer la table de contingence
+table_contingence <- table(df_2020$Type, df_2020$Machine.failure)
+cat("Table de contingence :\n")
+print(table_contingence)
+
+# Test du chi-carré
+chi_result <- chisq.test(table_contingence)
+cat("Résultat du test chi-carré :\n")
+print(chi_result)
+
+ 
+```
+
+La p-value obtenue est 0.001032, qui est bien inférieure au seuil de
+signification typique de 0.05. Cela signifie que les résultats sont
+statistiquement significatifs, et nous pouvons rejeter l'hypothèse nulle
+(H0). En d'autres termes, il existe une relation significative entre la
+qualité du produit (Type) et les défaillances des machines
+(Machine_failure).
+
+#### \# L'indice de Cramer's
+
+Le test du chi-carré indique qu'il existe une relation significative,
+mais il ne mesure pas l'intensité de cette relation. Pour cela, vous
+pouvez calculer l'indice de Cramer's
+
+```{r}
+library(DescTools)
+cramer_v <- CramerV(table_contingence)
+print(cramer_v)
+```
+
+L'indice de Cramer V, nous indique que l'association entre ces variables
+est très faible (0.037), bien qu'elle soit significative. Cela suggère
+que d'autres facteurs, non inclus dans cette analyse, influencent
+davantage les défaillances des machines.
+
+#### ANOVA : Relation entre Rotational_speed et Type
+
+Nous avons utilisé le test de Shapiro-Wilk pour vérifier la normalité
+des données avant d'appliquer l'ANOVA, car ce test permet de déterminer
+si les données suivent une distribution normale. Cela est crucial car
+l'ANOVA repose sur l'hypothèse de normalité des groupes.
+
+Le test de Shapiro-Wilk ne peut pas être appliqué à des échantillons de
+taille supérieure à 5000. Par conséquent, nous avons sous-échantillonné
+chaque groupe à 1000 observations pour respecter cette contrainte et
+effectuer le test de normalité de manière appropriée.
+
+```{r}
+library(dplyr)
+
+# Filtrer les données pour chaque niveau de qualité de produit et sous-échantillonner 1000 lignes
+high_quality <- df_2020 %>% filter(Type == "H") %>% sample_n(1000) %>% pull(Rotational.speed..rpm.)
+low_quality <- df_2020 %>% filter(Type == "L") %>% sample_n(1000) %>% pull(Rotational.speed..rpm.)
+medium_quality <- df_2020 %>% filter(Type == "M") %>% sample_n(1000) %>% pull(Rotational.speed..rpm.)
+
+# Test de normalité (Shapiro-Wilk) pour chaque sous-échantillon
+test_high <- shapiro.test(high_quality)
+test_low <- shapiro.test(low_quality)
+test_medium <- shapiro.test(medium_quality)
+
+# Créer un tableau avec les résultats
+normality_results <- data.frame(
+  Product_Quality = c("High", "Low", "Medium"),
+  Statistic = c(test_high$statistic, test_low$statistic, test_medium$statistic),
+  p_value = c(test_high$p.value, test_low$p.value, test_medium$p.value)
+)
+# Afficher les résultats
+print(normality_results)
+
+# Test de Kruskal-Wallis pour comparer la vitesse de rotation entre les groupes
+kruskal_test <- kruskal.test(Rotational.speed..rpm. ~ Type, data = df_2020)
+
+# Afficher les résultats du test
+print(kruskal_test)
+
+```
+
+Les résultats montrent que les données pour chaque groupe (High, Low,
+Medium) ne suivent pas une distribution normale (p-value très faible
+dans les tests de Shapiro-Wilk). Le test de Kruskal-Wallis indique qu'il
+n'y a pas de différence significative entre les groupes en termes de
+vitesse de rotation (p-value = 0.8834).
+
+Étant donné que les résultats du test de Shapiro-Wilk montrent que les
+données ne suivent pas une distribution normale pour les trois groupes
+(p-value très faible), il n'est pas recommandé de passer à l'ANOVA, car
+cette méthode suppose une normalité des résidus.
+
+##### Test t entre Machine.failure et Rotational.speed
+
+Les tests comme le test t de Student (standard) et l'ANOVA partent de
+l'hypothèse que les groupes comparés ont des variances égales
+(homogènes). Cette hypothèse est nécessaire pour garantir que les tests
+fonctionnent correctement, car les formules de ces tests sont dérivées
+en supposant une homogénéité des variances.
+
+-   p-value \> 0.05 :donc les variances des groupes sont égales (pas de
+    preuve statistique d'inégalité), on peut utiliser les tests
+    paramétriques standard (test t ou ANOVA).
+-   p-value ≤ 0.05 :on doit utiliser des alternatives robustes comme
+    :Test t de Welch au lieu du test t standard.
+
+```{r}
+library(dplyr)
+
+# Vérification de la taille des groupes
+cat("Taille du groupe 'yes_failure':", nrow(df_2020 %>% filter(Machine.failure == 1)), "\n")
+cat("Taille du groupe 'no_failure':", nrow(df_2020 %>% filter(Machine.failure == 0)), "\n")
+
+# Si les groupes ont moins de 1000 lignes, on peut ajuster la taille d'échantillon
+yes_failure <- df_2020 %>% filter(Machine.failure == 1) %>% sample_n(min(1000, n())) %>% pull(Rotational.speed..rpm.)
+no_failure <- df_2020 %>% filter(Machine.failure == 0) %>% sample_n(min(1000, n())) %>% pull(Rotational.speed..rpm.)
+
+# Test de normalité (Shapiro-Wilk) pour chaque groupe
+test_yes_failure <- shapiro.test(yes_failure)
+test_no_failure <- shapiro.test(no_failure)
+
+# Afficher les résultats des tests de normalité
+cat("Test de normalité (Shapiro-Wilk) pour 'yes_failure':\n")
+print(test_yes_failure)
+
+cat("Test de normalité (Shapiro-Wilk) pour 'no_failure':\n")
+print(test_no_failure)
+
+# Test t pour comparer les moyennes des groupes
+t_test_result_1 <- t.test(yes_failure, no_failure)
+
+# Résultats du test t
+cat("Résultat du test t pour Machine.failure:\n")
+print(t_test_result_1)
+
+
+```
+
+-   Test de normalité : Les deux groupes (avec et sans défaillance) ne
+    suivent pas une distribution normale (p \< 2.2e-16).
+-   Test t de Welch : Aucune différence significative n'a été trouvée
+    entre les moyennes des groupes (p = 0.07966), indiquant qu'il n'y a
+    pas de différence notable entre les vitesses de rotation des
+    machines défaillantes et non défaillantes. Le test montre que la
+    vitesse de rotation moyenne est plus élevée dans le groupe avec
+    défaillance mécanique (Yes) que dans le groupe sans défaillance
+    mécanique (No). Une différence significative est indiquée par une
+    p-value de 0.038, ce qui est inférieur au seuil 𝛼=0.05
+
+-Pour vérifie l'hypothèse d'homogénéité des variances tout en tenant
+compte de la distribution des données on va appliquer les tests de
+Bartlett et de Levene.
+
+-   Test de Bartlett: Le test de Bartlett est adapté uniquement si vos
+    données suivent une distribution normale, car il est sensible à la
+    non-normalité.
+-   Le test de Levene est robuste face aux déviations par rapport à la
+    normalité. C'est le test le plus utilisé pour vérifier l'homogénéité
+    des variances.
+
+```{r}
+#install.packages("car") 
+library(car)            
+
+# Convertir la variable 'Machine.failure' en facteur
+df_2020$Machine.failure <- as.factor(df_2020$Machine.failure)
+
+# Effectuer le test de Levene
+levene_result <- leveneTest(Rotational.speed..rpm. ~ Machine.failure, data = df_2020)
+print("Résultat du test de Levene :")
+print(levene_result)
+
+```
+
+-   Le test de Levene montre une différence significative des variances
+    entre les groupes "yes" et "no" de `Machine.failure` (p \< 0.001),
+    indiquant que les variances ne sont pas homogènes.
+
+#### Le test t entre Tool Wear Failure (Yes/No) et Rotational Speed :
+
+Dans cette section, nous effectuons un test t pour comparer les moyennes
+de la vitesse de rotation (Rotational Speed) entre les groupes ayant
+subi une défaillance d'usure d'outil (Tool Wear Failure, TWF) et ceux
+n'ayant pas subi cette défaillance. Le but est d'analyser si l'usure de
+l'outil a un effet significatif sur la vitesse de rotation des machines.
+
+```{r}
+library(dplyr)
+
+# Vérification de la taille des groupes 'Tool Wear Failure' (TWF)
+cat("Taille du groupe 'Tool Wear Failure' (Yes):", nrow(df_2020 %>% filter(TWF == 1)), "\n")
+cat("Taille du groupe 'Tool Wear Failure' (No):", nrow(df_2020 %>% filter(TWF == 0)), "\n")
+
+# Ajuster la taille d'échantillon si les groupes ont moins de 1000 lignes
+yes_twf <- df_2020 %>% filter(TWF == 1) %>% sample_n(min(1000, n())) %>% pull(Rotational.speed..rpm.)
+no_twf <- df_2020 %>% filter(TWF == 0) %>% sample_n(min(1000, n())) %>% pull(Rotational.speed..rpm.)
+
+# Test de normalité (Shapiro-Wilk) pour chaque groupe
+test_yes_twf <- shapiro.test(yes_twf)
+test_no_twf <- shapiro.test(no_twf)
+
+# Afficher les résultats des tests de normalité
+cat("Test de normalité (Shapiro-Wilk) pour 'Tool Wear Failure' (Yes):\n")
+print(test_yes_twf)
+
+cat("Test de normalité (Shapiro-Wilk) pour 'Tool Wear Failure' (No):\n")
+print(test_no_twf)
+
+# Test t pour comparer les moyennes des groupes
+t_test_result_twf <- t.test(yes_twf, no_twf)
+
+# Résultats du test t
+cat("Résultat du test t pour Tool Wear Failure (TWF):\n")
+print(t_test_result_twf)
+
+```
+
+Il n'y a pas de différence significative entre les vitesses de rotation
+des machines avec et sans défaillance d'usure d'outil, comme l'indique
+la p-value élevée du test t de Welch (0.4239).
+
+# Conclusion générale :
+
+Les tests statistiques appliqués sur les deux ensembles de données ont
+permis d’approfondir notre compréhension des modèles et de leur
+performance. Pour le premier modèle, les résultats montrent que
+l’analyse des variables ambiantes est efficace pour prédire les
+émissions de CO et NOx des turbines à gaz, tandis que pour le deuxième
+modèle, l'analyse des défaillances des machines, notamment l'usure des
+outils et les défaillances de température, a révélé des relations
+importantes pour prédire les défaillances de machines en fonction de
+divers paramètres.
